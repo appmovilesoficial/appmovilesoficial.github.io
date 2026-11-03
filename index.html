@@ -1577,6 +1577,21 @@ body.bloqueado { overflow: hidden; }
 .admin-form textarea { min-height: 96px; }
 .admin-check { display: flex; align-items: center; gap: 9px; font-size: 11.5px; padding: 10px 0; }
 .admin-check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* ---- Fotos del producto (panel) ---- */
+.fotos-admin { display: block; }
+.fotos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.fotos-vacio { font-size: 11px; color: var(--muted); margin: 2px 0 10px; }
+.foto-mini { position: relative; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden; background: var(--bg-2); border: 1px solid var(--line); }
+.foto-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.foto-mini .foto-tag { position: absolute; left: 4px; bottom: 4px; background: rgba(23,21,18,.82); color: #fff; font-size: 6.5px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 5px; border-radius: 3px; }
+.foto-mini button { position: absolute; top: 4px; width: 18px; height: 18px; border: 0; border-radius: 50%; background: rgba(23,21,18,.78); color: #fff; font-size: 9px; line-height: 1; padding: 0; cursor: pointer; display: grid; place-items: center; }
+.foto-mini button:hover { background: var(--accent); }
+.foto-mini .foto-quitar { right: 4px; }
+.foto-mini .foto-principal { left: 4px; }
+.fotos-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-mini { font: inherit; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 10px 15px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: background .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
+.btn-mini:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 .admin-bloque { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 22px; }
 .admin-bloque h3 { font-size: 9px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 .admin-bloque h3::after { content: ''; height: 1px; flex: 1; background: var(--line); }
@@ -2054,6 +2069,10 @@ body.bloqueado { overflow: hidden; }
   };
 
   var ESTADOS = ['pendiente', 'confirmado', 'enviado', 'entregado', 'cancelado'];
+
+  /* Formato de las fotos de producto: 4:5 vertical, el mismo de las tarjetas. */
+  var FOTO_RATIO = 4 / 5;
+  var FOTO_ANCHO = 900;
   var ESTADO_LABEL = {
     pendiente: 'Pendiente',
     confirmado: 'Confirmado',
@@ -3782,7 +3801,6 @@ body.bloqueado { overflow: hidden; }
     };
 
     var tallasTxt = (p.tallas || []).join(',');
-    var imagenesTxt = (p.imagenes || []).filter(function (u) { return u !== p.imagen; }).join('\n');
     var cats = state.categorias && state.categorias.length ? state.categorias : ['Running', 'Lifestyle', 'Training', 'Tennis'];
 
     var html = '' +
@@ -3798,8 +3816,18 @@ body.bloqueado { overflow: hidden; }
             '<div class="campo"><label for="pr-oferta">Precio de oferta (0 = sin oferta)</label><input id="pr-oferta" inputmode="decimal" value="' + (p.precio_oferta_usd || '') + '" placeholder="0"></div>' +
             '<div class="campo"><label for="pr-estado">Visibilidad</label><select id="pr-estado"><option value="1"' + (p.activo ? ' selected' : '') + '>Visible en la tienda</option><option value="0"' + (!p.activo ? ' selected' : '') + '>Oculto</option></select></div>' +
             '<div class="campo ancho"><label for="pr-descripcion">Descripción</label><textarea id="pr-descripcion" placeholder="Materiales, comodidad, para qué sirve...">' + esc(p.descripcion) + '</textarea></div>' +
-            '<div class="campo ancho"><label for="pr-imagen">Foto principal (URL)</label><input id="pr-imagen" value="' + esc(p.imagen) + '" placeholder="https://..."></div>' +
-            '<div class="campo ancho"><label for="pr-imagenes">Fotos adicionales (una por línea)</label><textarea id="pr-imagenes" placeholder="https://...">' + esc(imagenesTxt) + '</textarea></div>' +
+            '<div class="campo ancho"><label>Fotos del producto</label>' +
+              '<div class="fotos-admin">' +
+                '<div class="fotos-grid" id="pr-fotos-grid"></div>' +
+                '<div class="fotos-botones">' +
+                  '<button class="btn-mini" type="button" id="pr-galeria">📁 Elegir de la galería</button>' +
+                  '<button class="btn-mini" type="button" id="pr-camara">📷 Tomar foto</button>' +
+                '</div>' +
+                '<input type="file" id="pr-file-galeria" accept="image/*" multiple hidden>' +
+                '<input type="file" id="pr-file-camara" accept="image/*" capture="environment" hidden>' +
+                '<p class="admin-ayuda" id="pr-foto-estado">Se recortan solas al formato 4:5 de la tienda. La primera es la principal.</p>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
           '<label class="admin-check"><input type="checkbox" id="pr-destacado"' + (p.destacado ? ' checked' : '') + '> Mostrar en “Los más pedidos”</label>' +
         '</div>' +
@@ -3816,6 +3844,158 @@ body.bloqueado { overflow: hidden; }
       '</form>';
 
     abrirModal(html, 'modal-admin-form');
+
+    /* ---------- Fotos: galería, cámara y recorte automático ---------- */
+    var fotos = [];
+    if (p.imagen) fotos.push(p.imagen);
+    (p.imagenes || []).forEach(function (u) { if (u && fotos.indexOf(u) < 0) fotos.push(u); });
+
+    function pintarFotos() {
+      var cont = el('pr-fotos-grid');
+      if (!cont) return;
+      if (!fotos.length) {
+        cont.innerHTML = '<p class="fotos-vacio">Todavía no hay fotos.</p>';
+        return;
+      }
+      cont.innerHTML = fotos.map(function (u, i) {
+        return '<div class="foto-mini">' +
+          '<img src="' + esc(u) + '" alt="">' +
+          (i === 0
+            ? '<span class="foto-tag">Principal</span>'
+            : '<button type="button" class="foto-principal" data-principal="' + i + '" title="Usar como principal">★</button>') +
+          '<button type="button" class="foto-quitar" data-quitar="' + i + '" title="Quitar">✕</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function recortarFoto(file) {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var img = new Image();
+          img.onload = function () {
+            try {
+              var w = img.naturalWidth || img.width;
+              var h = img.naturalHeight || img.height;
+              if (!w || !h) return rej(new Error('La foto está dañada.'));
+              var cw = w, ch = Math.round(w / FOTO_RATIO);
+              if (ch > h) { ch = h; cw = Math.round(h * FOTO_RATIO); }
+              var sx = Math.round((w - cw) / 2);
+              var sy = Math.round((h - ch) / 2);
+              var outW = Math.min(FOTO_ANCHO, cw);
+              var outH = Math.round(outW / FOTO_RATIO);
+              var cv = document.createElement('canvas');
+              cv.width = outW;
+              cv.height = outH;
+              var ctx = cv.getContext('2d');
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, outW, outH);
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+              ctx.drawImage(img, sx, sy, cw, ch, 0, 0, outW, outH);
+              res(cv.toDataURL('image/jpeg', 0.85));
+            } catch (e) {
+              rej(new Error('No se pudo procesar la foto.'));
+            }
+          };
+          img.onerror = function () { rej(new Error('Formato de imagen no compatible.')); };
+          img.src = fr.result;
+        };
+        fr.onerror = function () { rej(new Error('No se pudo leer el archivo.')); };
+        fr.readAsDataURL(file);
+      });
+    }
+
+    function esperarSubida(id) {
+      var intentos = 0;
+      return new Promise(function (res, rej) {
+        (function preguntar() {
+          intentos++;
+          llamar('resultadoSubida', [id]).then(function (r) {
+            if (r && r.listo === false) {
+              if (intentos > 40) return rej(new Error('La subida tardó demasiado. Revisa tu conexión.'));
+              setTimeout(preguntar, 900);
+              return;
+            }
+            if (r && r.ok) return res(r.url);
+            rej(new Error((r && r.error) || 'El servidor rechazó la foto.'));
+          }).catch(function () {
+            if (intentos > 40) return rej(new Error('No se pudo conectar con el servidor.'));
+            setTimeout(preguntar, 1200);
+          });
+        })();
+      });
+    }
+
+    function subirFoto(file) {
+      return recortarFoto(file).then(function (dataUrl) {
+        if (DEMO) return dataUrl; // en modo demo la foto se queda en el navegador
+        var id = 'up' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        var cuerpo = JSON.stringify({
+          accion: 'subirImagen',
+          id: id,
+          token: state.admin.token,
+          nombre: (el('pr-codigo').value || 'producto'),
+          dataUrl: dataUrl
+        });
+        // POST sin leer la respuesta (Apps Script no manda CORS); luego se consulta por id.
+        return fetch(API_BASE, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: cuerpo
+        }).catch(function () { /* respuesta opaca */ }).then(function () { return esperarSubida(id); });
+      });
+    }
+
+    function procesarFotos(lista) {
+      var arr = Array.prototype.slice.call(lista || []);
+      var estado = el('pr-foto-estado');
+      if (!arr.length || !estado) return;
+      var i = 0;
+      estado.textContent = 'Preparando ' + arr.length + ' foto(s)…';
+      (function siguiente() {
+        if (i >= arr.length) {
+          estado.textContent = 'Listo: ' + fotos.length + ' foto(s). La primera es la principal.';
+          return;
+        }
+        var file = arr[i++];
+        estado.textContent = 'Subiendo ' + i + ' de ' + arr.length + '…';
+        subirFoto(file).then(function (url) {
+          fotos.push(url);
+          pintarFotos();
+        }).catch(function (e2) {
+          estado.textContent = 'No se pudo subir ' + (file.name || 'la foto') + ': ' + e2.message;
+        }).then(siguiente);
+      })();
+    }
+
+    pintarFotos();
+    if (el('pr-galeria')) el('pr-galeria').addEventListener('click', function () { el('pr-file-galeria').click(); });
+    if (el('pr-camara')) el('pr-camara').addEventListener('click', function () { el('pr-file-camara').click(); });
+    if (el('pr-file-galeria')) el('pr-file-galeria').addEventListener('change', function (ev) {
+      procesarFotos(ev.target.files);
+      ev.target.value = '';
+    });
+    if (el('pr-file-camara')) el('pr-file-camara').addEventListener('change', function (ev) {
+      procesarFotos(ev.target.files);
+      ev.target.value = '';
+    });
+    if (el('pr-fotos-grid')) el('pr-fotos-grid').addEventListener('click', function (ev) {
+      var quitar = ev.target.closest('[data-quitar]');
+      if (quitar) {
+        fotos.splice(Number(quitar.getAttribute('data-quitar')), 1);
+        pintarFotos();
+        return;
+      }
+      var principal = ev.target.closest('[data-principal]');
+      if (principal) {
+        var idx = Number(principal.getAttribute('data-principal'));
+        var elegida = fotos.splice(idx, 1)[0];
+        fotos.unshift(elegida);
+        pintarFotos();
+      }
+    });
 
     var stockPrev = p.stock_tallas || {};
 
@@ -3854,9 +4034,6 @@ body.bloqueado { overflow: hidden; }
         stock[inp.getAttribute('data-stock-talla')] = Math.max(0, Math.floor(num(inp.value)));
       });
 
-      var imagenes = (el('pr-imagenes').value || '').split('\n')
-        .map(function (x) { return x.trim(); }).filter(Boolean);
-
       var datos = {
         codigo: el('pr-codigo').value.trim().toUpperCase(),
         nombre: el('pr-nombre').value.trim(),
@@ -3864,8 +4041,8 @@ body.bloqueado { overflow: hidden; }
         descripcion: el('pr-descripcion').value.trim(),
         precio_usd: num(el('pr-precio').value),
         precio_oferta_usd: num(el('pr-oferta').value),
-        imagen: el('pr-imagen').value.trim(),
-        imagenes: imagenes,
+        imagen: fotos[0] || '',
+        imagenes: fotos.slice(),
         tallas: el('pr-tallas').value.split(',').map(function (t) { return t.trim(); }).filter(Boolean),
         stock_tallas: stock,
         activo: el('pr-estado').value === '1',
