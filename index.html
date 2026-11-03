@@ -1808,7 +1808,7 @@ body.bloqueado { overflow: hidden; }
     <a href="#destacados">Favoritos</a>
     <a href="#como-comprar">Cómo comprar</a>
     <a href="#contacto">Contacto</a>
-    <a href="#admin">Administrar tienda</a>
+
   </div>
 
   <!-- ======================= TIENDA ======================= -->
@@ -1982,7 +1982,7 @@ body.bloqueado { overflow: hidden; }
         <h4>Información</h4>
         <a href="#como-comprar">Envíos y entregas</a>
         <button class="pie-link" id="pie-cambios" style="all:unset;cursor:pointer;display:block;font-size:12px;line-height:2.1;color:#c9c1b4">Cambios y devoluciones</button>
-        <a href="#admin">Administrar tienda</a>
+    
       </div>
       <div class="pie-pie">
         <span>© <span id="pie-anio">2026</span> Frugulletty. Todos los derechos reservados.</span>
@@ -2276,7 +2276,7 @@ body.bloqueado { overflow: hidden; }
     }
     if (!leer(LS.cfg)) guardarJSON(LS.cfg, DEMO_CONFIG);
     if (!leer(LS.ped)) guardarJSON(LS.ped, []);
-    if (!leer(LS.clave)) guardar(LS.clave, 'Frugulletty2026');
+    if (!leer(LS.clave)) guardar(LS.clave, 'demo');
   }
 
   function demoProductos() {
@@ -3527,7 +3527,7 @@ body.bloqueado { overflow: hidden; }
             '<button class="btn btn-primario btn-ancho" type="submit" id="admin-login-btn" style="margin-top:16px">Entrar</button>' +
           '</form>' +
           '<button class="btn btn-texto btn-ancho" type="button" data-avista="tienda" style="margin-top:8px">Volver a la tienda</button>' +
-          (DEMO ? '<p class="admin-ayuda" style="text-align:center;margin-top:14px">Modo demo · usuario <strong>admin</strong> · clave <strong>Frugulletty2026</strong></p>' : '') +
+          (DEMO ? '<p class="admin-ayuda" style="text-align:center;margin-top:14px">Modo demo · usuario <strong>admin</strong> · clave <strong>demo</strong></p>' : '') +
         '</div>' +
       '</div>';
   }
