@@ -2076,13 +2076,16 @@ body.bloqueado { overflow: hidden; }
 }
 
 /* Compartir orden de entrega por WhatsApp */
+.modal-share-delivery { max-width: 560px; }
 .share-delivery { padding: 28px; display: flex; flex-direction: column; gap: 12px; }
 .share-delivery h3 { margin: 0; padding-right: 48px; font-family: var(--serif); font-size: 26px; line-height: 1.15; }
 .share-delivery p { margin: 0; font-size: 13px; line-height: 1.5; }
 .share-preview {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   max-height: 58vh;
   object-fit: contain;
+  margin: 0 auto;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: var(--bg-2);
@@ -2092,7 +2095,7 @@ body.bloqueado { overflow: hidden; }
 
 @media (max-width: 640px) {
   .share-delivery { padding: 22px 16px calc(22px + env(safe-area-inset-bottom)); }
-  .share-preview { max-height: 50vh; }
+  .share-preview { max-height: 44vh; }
 }
 
 </style>
@@ -2354,7 +2357,7 @@ body.bloqueado { overflow: hidden; }
     <div style="padding:24px;text-align:center;font-family:sans-serif">Activa JavaScript para ver la tienda y hacer pedidos.</div>
   </noscript>
 
-  <script>window.FRUGULLETTY_API = "https://script.google.com/macros/s/AKfycbxNOXkelAfA8dAoxq1bXH0y-6OxlRDcn0BalOBdCWGZ-eHqf3PlwsP0Mj6VT89NNv0Gjw/exec";</script>
+  <script>window.FRUGULLETTY_API = "https://script.google.com/macros/s/AKfycbxNOXkelAfA8dAoxq1bXH0y-6OxlRDcn0BalOBdCWGZ-eHqf3PlwsP0Mj6VT89NNv0Gjw";</script>
   <script>
 /* ============================================================
    FRUGULLETTY — Lógica de la tienda
