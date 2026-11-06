@@ -4897,13 +4897,22 @@ body.bloqueado { overflow: hidden; }
       .catch(function (e) { toast(e.message, 'error'); });
   }
 
-  function mensajeDelivery(p) {
+  function mensajeDelivery(p, costo) {
     var tienda = (state.config && state.config.tienda_nombre) || 'Frugulletty';
     var direccionTienda = (state.config && state.config.direccion_tienda) || 'Coordinar con la tienda';
     var direccion = [p.cliente_direccion, p.cliente_ciudad, p.cliente_estado].filter(Boolean).join(', ');
-    var items = (p.items || []).map(function (it) {
-      return it.cantidad + '× ' + it.nombre + ' · T' + (it.talla || 'Ú');
-    }).join('; ');
+    var monto = costo === undefined || costo === null || costo === '' ? num(p.delivery_costo_usd) : num(costo);
+    var articulos = (p.items || []).map(function (it) {
+      var linea = '• ' + it.cantidad + '× ' + it.nombre + ' · T' + (it.talla || 'Ú');
+      var foto = String(it.imagen || '').trim();
+      if (!foto) {
+        var catalogo = (state.admin.productos && state.admin.productos.length ? state.admin.productos : state.productos) || [];
+        var prod = catalogo.filter(function (x) { return x.codigo === it.codigo; })[0];
+        if (prod) foto = String(prod.imagen || (prod.imagenes && prod.imagenes[0]) || '').trim();
+      }
+      if (foto) linea += '\n  Foto: ' + foto;
+      return linea;
+    }).join('\n');
     return [
       'Hola ' + (p.delivery_nombre || 'equipo') + ', se te ha asignado el pedido ' + p.id + ' de ' + tienda + '.',
       '',
@@ -4911,9 +4920,10 @@ body.bloqueado { overflow: hidden; }
       'Teléfono: ' + p.cliente_telefono,
       'Dirección de entrega: ' + (direccion || 'Retiro en tienda'),
       'Recoger en (dirección de la tienda): ' + direccionTienda,
-      'Artículos: ' + (items || '—'),
+      'Artículos:',
+      (articulos || '—'),
       'Nota para la tienda: ' + (p.nota || 'Sin nota'),
-      'Costo del delivery: ' + usd(p.delivery_costo_usd || 0),
+      'Costo del delivery: ' + usd(monto),
       '',
       'Por favor confirma la entrega al recibir el pedido.'
     ].join('\n');
@@ -5002,7 +5012,7 @@ body.bloqueado { overflow: hidden; }
           '</div>' +
           '<label class="delivery-costo-label">Costo $<input class="delivery-costo" inputmode="decimal" value="' + (num(p.delivery_costo_usd) ? num(p.delivery_costo_usd) : '') + '" data-delivery-costo="' + esc(p.id) + '" placeholder="0"></label>' +
           '<button type="button" class="btn-mini" data-delivery-guardar="' + esc(p.id) + '">Guardar costo</button>' +
-          (delActual && waDelivery ? '<a class="pedido-wa pedido-moto" href="https://wa.me/' + waDelivery + '?text=' + encodeURIComponent(msgDelivery) + '" target="_blank" rel="noopener" title="Enviar pedido al delivery por WhatsApp" aria-label="Enviar pedido al delivery por WhatsApp">🏍️</a>' : '') +
+          (delActual && waDelivery ? '<a class="pedido-wa pedido-moto" href="https://wa.me/' + waDelivery + '?text=' + encodeURIComponent(msgDelivery) + '" target="_blank" rel="noopener" data-del-moto="' + esc(p.id) + '" title="Enviar pedido al delivery por WhatsApp (escribe el monto primero)" aria-label="Enviar pedido al delivery por WhatsApp">🏍️</a>' : '') +
           (delActual && delActual.token ? '<button type="button" class="btn-mini" data-del-copiar="' + esc(delActual.token) + '" data-del-pedido="' + esc(p.id) + '" title="Copiar link de calificación de este pedido">Link ⭐</button>' : '') +
         '</div>';
       return '' +
@@ -5834,6 +5844,36 @@ body.bloqueado { overflow: hidden; }
             var pickWa = buscarWa.closest('.delivery-picker');
             if (pickWa) pickWa.classList.add('abierto');
             buscarWa.focus();
+          }
+        }
+        return;
+      }
+
+      // Enviar el pedido al delivery exige escribir el monto y adjunta la foto del modelo.
+      var moto = t.closest('[data-del-moto]');
+      if (moto) {
+        var pidMoto = moto.getAttribute('data-del-moto');
+        var pedMoto = (state.admin.pedidos || []).filter(function (x) { return x.id === pidMoto; })[0];
+        var cardMoto = moto.closest('.pedido-card');
+        var inputCosto = cardMoto ? cardMoto.querySelector('[data-delivery-costo="' + pidMoto + '"]') : null;
+        var montoMoto = inputCosto ? num(inputCosto.value) : 0;
+        if (!(montoMoto > 0)) {
+          ev.preventDefault();
+          toast('Escribe el monto del delivery antes de enviar el mensaje.', 'error');
+          if (inputCosto) {
+            inputCosto.focus();
+            inputCosto.select();
+          }
+          return;
+        }
+        if (pedMoto) {
+          var baseWa = String(moto.getAttribute('href') || '').split('?')[0];
+          moto.setAttribute('href', baseWa + '?text=' + encodeURIComponent(mensajeDelivery(pedMoto, montoMoto)));
+          if (num(pedMoto.delivery_costo_usd) !== montoMoto) {
+            pedMoto.delivery_costo_usd = montoMoto;
+            llamar('adminAsignarDelivery', [state.admin.token, pidMoto, pedMoto.delivery_codigo || '', montoMoto])
+              .then(function () { toast('Monto del delivery guardado', 'ok'); })
+              .catch(function (e) { toast(e.message, 'error'); });
           }
         }
         return;
