@@ -1830,6 +1830,7 @@ body.bloqueado { overflow: hidden; }
 }
 .delivery-asignado { font-size: 11px; color: var(--ink-2); flex: 1 1 100%; }
 .delivery-asignado strong { color: var(--ink); }
+.delivery-asignado.falta { color: #a4373a; font-weight: 600; }
 .delivery-picker { position: relative; flex: 1 1 240px; min-width: 0; }
 .delivery-picker input {
   width: 100%;
@@ -3027,7 +3028,15 @@ body.bloqueado { overflow: hidden; }
 
     if (fn === 'adminPedidos') {
       var filtro = String(args[1] || 'todos');
-      return pedidos.filter(function (p) { return filtro === 'todos' || p.estado === filtro; });
+      var listaDel = leerJSON(LS.del, []);
+      return pedidos.filter(function (p) { return filtro === 'todos' || p.estado === filtro; })
+        .map(function (p) {
+          var rep = listaDel.filter(function (d) { return d.codigo === p.delivery_codigo; })[0] || {};
+          return Object.assign({}, p, {
+            delivery_telefono: rep.telefono || '',
+            delivery_placa: rep.placa || ''
+          });
+        });
     }
 
     if (fn === 'adminCambiarEstado') {
@@ -3037,6 +3046,9 @@ body.bloqueado { overflow: hidden; }
       var idx = -1;
       pedidos.forEach(function (p, i) { if (p.id === id) idx = i; });
       if (idx < 0) throw new Error('Pedido no encontrado.');
+      if (nuevo === 'enviado' && pedidos[idx].tipo_entrega !== 'retiro' && !pedidos[idx].delivery_codigo) {
+        throw new Error('Asigna un delivery antes de marcar el pedido como enviado.');
+      }
       pedidos[idx].estado = nuevo;
       pedidos[idx].actualizado = ahoraISO();
       guardarJSON(LS.ped, pedidos);
@@ -3117,7 +3129,10 @@ body.bloqueado { overflow: hidden; }
       guardarJSON(LS.ped, listaPed);
       return {
         ok: true, delivery_codigo: delA.codigo,
-        delivery_nombre: delA.nombre, delivery_costo_usd: pedidoA.delivery_costo_usd
+        delivery_nombre: delA.nombre,
+        delivery_telefono: delA.telefono || '',
+        delivery_placa: delA.placa || '',
+        delivery_costo_usd: pedidoA.delivery_costo_usd
       };
     }
 
@@ -4908,7 +4923,27 @@ body.bloqueado { overflow: hidden; }
     var nombre = String(p.cliente_nombre || '').trim() || 'cliente';
     var tienda = (state.config && state.config.tienda_nombre) || 'Frugulletty';
     var frase = ESTADO_FRASE[p.estado] || 'ha cambiado de estado';
-    return 'Hola ' + nombre + ', te escribimos de ' + tienda + ' por tu pedido ' + p.id + ' ' + frase + '.';
+    var lineas = ['Hola ' + nombre + ', te escribimos de ' + tienda + ' por tu pedido ' + p.id + ' ' + frase + '.'];
+
+    // Si el paquete va en camino, el cliente debe saber quién lo lleva.
+    if (p.estado === 'enviado' && p.tipo_entrega !== 'retiro') {
+      var registrado = deliveryPorCodigo(p.delivery_codigo) || {};
+      var repartidor = {
+        nombre: p.delivery_nombre || registrado.nombre || '',
+        telefono: p.delivery_telefono || registrado.telefono || '',
+        placa: p.delivery_placa || registrado.placa || ''
+      };
+      if (repartidor.nombre) {
+        lineas.push('');
+        lineas.push('🏍️ Repartidor: ' + repartidor.nombre);
+        if (repartidor.placa) lineas.push('🪪 Placa: ' + repartidor.placa);
+        if (repartidor.telefono) lineas.push('📱 Teléfono: ' + repartidor.telefono);
+        lineas.push('');
+        lineas.push('Por favor confirma la entrega al recibir tu paquete.');
+      }
+    }
+
+    return lineas.join('\n');
   }
 
   function adminPedidosHtml() {
@@ -4945,15 +4980,20 @@ body.bloqueado { overflow: hidden; }
       var wa = telefonoWa(p.cliente_telefono);
       var msg = mensajeEstadoPedido(p);
       var tel = String(p.cliente_telefono || '');
-      var delActual = p.delivery_codigo ? deliveryPorCodigo(p.delivery_codigo) : null;
-      if (!delActual && p.delivery_codigo) {
-        delActual = { codigo: p.delivery_codigo, nombre: p.delivery_nombre || p.delivery_codigo, telefono: '', token: '' };
-      }
+      var registrado = p.delivery_codigo ? deliveryPorCodigo(p.delivery_codigo) : null;
+      var delActual = p.delivery_codigo ? {
+        codigo: p.delivery_codigo,
+        nombre: (registrado && registrado.nombre) || p.delivery_nombre || p.delivery_codigo,
+        telefono: (registrado && registrado.telefono) || p.delivery_telefono || '',
+        placa: (registrado && registrado.placa) || p.delivery_placa || '',
+        token: (registrado && registrado.token) || ''
+      } : null;
+      var faltaDelivery = p.estado === 'enviado' && p.tipo_entrega !== 'retiro' && !delActual;
       var waDelivery = delActual ? telefonoWa(delActual.telefono || '') : '';
       var msgDelivery = delActual ? mensajeDelivery(p) : '';
       var bloqueDelivery = p.tipo_entrega === 'retiro' ? '' :
         '<div class="pedido-delivery">' +
-          '<div class="delivery-asignado">' + (delActual ? '🏍️ Asignado a <strong>' + esc(delActual.nombre) + '</strong>' : 'Sin delivery asignado') + '</div>' +
+          '<div class="delivery-asignado' + (faltaDelivery ? ' falta' : '') + '">' + (delActual ? '🏍️ Asignado a <strong>' + esc(delActual.nombre) + '</strong>' : (faltaDelivery ? '⚠️ Asigna un delivery para avisar al cliente' : 'Sin delivery asignado')) + '</div>' +
           '<div class="delivery-picker">' +
             '<input type="search" data-delivery-buscar="' + esc(p.id) + '" placeholder="Buscar delivery por nombre, código o teléfono…" autocomplete="off">' +
             '<div class="delivery-lista">' + opcionesDelivery +
@@ -4974,7 +5014,7 @@ body.bloqueado { overflow: hidden; }
           '<div class="pedido-cuerpo">' +
             '<div class="pedido-cliente">' +
               '<strong>' + esc(p.cliente_nombre) + '</strong>' +
-              '<span>📱 ' + esc(tel) + (wa ? ' · <a href="https://wa.me/' + wa + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" style="text-decoration:underline">WhatsApp</a>' : '') + '</span><br>' +
+              '<span>📱 ' + esc(tel) + (wa ? ' · <a href="https://wa.me/' + wa + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" data-wa-cliente="' + esc(p.id) + '" style="text-decoration:underline">WhatsApp</a>' : '') + '</span><br>' +
               '<span class="mini">' + (p.tipo_entrega === 'retiro' ? 'Retiro en tienda' : 'Envío · ' + esc(p.zona || p.cliente_ciudad || p.cliente_estado || 'nacional')) + '</span><br>' +
               (p.cliente_direccion ? '<span class="mini">' + esc(p.cliente_direccion) + '</span><br>' : '') +
               '<span class="mini">Pago: ' + esc(p.metodo_pago) + (p.referencia_pago ? ' · Ref ' + esc(p.referencia_pago) : '') + '</span>' +
@@ -4992,7 +5032,7 @@ body.bloqueado { overflow: hidden; }
               '<select class="select" data-aestado="' + esc(p.id) + '">' +
                 ESTADOS.map(function (e) { return '<option value="' + e + '"' + (p.estado === e ? ' selected' : '') + '>' + ESTADO_LABEL[e] + '</option>'; }).join('') +
               '</select>' +
-              (wa ? '<a class="pedido-wa" href="https://wa.me/' + wa + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" aria-label="Escribir por WhatsApp"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.1c-.2.6-1.2 1.2-1.7 1.2-.4 0-1 0-1.7-.3-2.1-.7-3.5-2.6-4.2-3.9-.4-.7-.6-1.4-.5-2 0-.5.3-1 .6-1.3.1-.2.3-.2.4-.2h.5c.2 0 .3.1.4.3l.7 1.6c.1.2 0 .3-.1.4l-.4.5c-.1.2-.2.3 0 .5.4.7 1.2 1.5 2 1.9.2.1.4.1.5 0l.5-.6c.2-.2.3-.2.5-.1l1.6.8c.2.1.3.2.3.3 0 .2 0 .7-.1.9z"/></svg></a>' : '') +
+              (wa ? '<a class="pedido-wa" href="https://wa.me/' + wa + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" data-wa-cliente="' + esc(p.id) + '" aria-label="Escribir por WhatsApp"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.1c-.2.6-1.2 1.2-1.7 1.2-.4 0-1 0-1.7-.3-2.1-.7-3.5-2.6-4.2-3.9-.4-.7-.6-1.4-.5-2 0-.5.3-1 .6-1.3.1-.2.3-.2.4-.2h.5c.2 0 .3.1.4.3l.7 1.6c.1.2 0 .3-.1.4l-.4.5c-.1.2-.2.3 0 .5.4.7 1.2 1.5 2 1.9.2.1.4.1.5 0l.5-.6c.2-.2.3-.2.5-.1l1.6.8c.2.1.3.2.3.3 0 .2 0 .7-.1.9z"/></svg></a>' : '') +
             '</div>' +
           '</div>' +
           bloqueDelivery +
@@ -5780,6 +5820,25 @@ body.bloqueado { overflow: hidden; }
     document.addEventListener('click', function (ev) {
       var t = ev.target;
 
+      // El aviso de "enviado" al cliente necesita repartidor asignado.
+      var waCliente = t.closest('[data-wa-cliente]');
+      if (waCliente) {
+        var pidWa = waCliente.getAttribute('data-wa-cliente');
+        var pedWa = (state.admin.pedidos || []).filter(function (x) { return x.id === pidWa; })[0];
+        if (pedWa && pedWa.estado === 'enviado' && pedWa.tipo_entrega !== 'retiro' && !pedWa.delivery_codigo) {
+          ev.preventDefault();
+          toast('Asigna un delivery antes de enviar el mensaje al cliente.', 'error');
+          var cardWa = waCliente.closest('.pedido-card');
+          var buscarWa = cardWa ? cardWa.querySelector('[data-delivery-buscar]') : null;
+          if (buscarWa) {
+            var pickWa = buscarWa.closest('.delivery-picker');
+            if (pickWa) pickWa.classList.add('abierto');
+            buscarWa.focus();
+          }
+        }
+        return;
+      }
+
       var cerrarM = t.closest('[data-cerrar-modal]');
       if (cerrarM) { cerrarModal(); return; }
 
@@ -5916,6 +5975,22 @@ body.bloqueado { overflow: hidden; }
       if (!sel) return;
       var id = sel.getAttribute('data-aestado');
       var nuevo = sel.value;
+      var pedido = (state.admin.pedidos || []).filter(function (x) { return x.id === id; })[0];
+
+      // No se puede avisar "enviado" al cliente sin repartidor para el envío.
+      if (pedido && nuevo === 'enviado' && pedido.tipo_entrega !== 'retiro' && !pedido.delivery_codigo) {
+        sel.value = pedido.estado;
+        toast('Asigna un delivery antes de marcar el pedido como enviado.', 'error');
+        var card = sel.closest('.pedido-card');
+        var buscar = card ? card.querySelector('[data-delivery-buscar]') : null;
+        if (buscar) {
+          var picker = buscar.closest('.delivery-picker');
+          if (picker) picker.classList.add('abierto');
+          buscar.focus();
+        }
+        return;
+      }
+
       sel.disabled = true;
       llamar('adminCambiarEstado', [state.admin.token, id, nuevo])
         .then(function () {
