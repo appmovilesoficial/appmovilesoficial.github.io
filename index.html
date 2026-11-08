@@ -5255,23 +5255,23 @@ body.bloqueado { overflow: hidden; }
     } catch (e) { return false; }
   }
 
-  function abrirModalCompartirDelivery(p, file, urlImagen, texto, enlace) {
+  function abrirModalCompartirDelivery(p, file, urlImagen, texto, enlace, enlaceChat) {
     if (state.deliveryShare && state.deliveryShare.url) {
       try { URL.revokeObjectURL(state.deliveryShare.url); } catch (e) { /* nada */ }
     }
-    state.deliveryShare = { file: file, texto: texto, enlace: enlace, url: urlImagen, pedidoId: p.id };
+    state.deliveryShare = { file: file, texto: texto, enlace: enlace, enlaceChat: enlaceChat, url: urlImagen, pedidoId: p.id };
     var puede = soportaCompartirArchivos();
     var html = '' +
       '<div class="share-delivery">' +
         '<h3>Enviar pedido al delivery</h3>' +
         '<p class="muted">' + (puede
-          ? 'Revisa la imagen y pulsa “Compartir imagen”. En WhatsApp elige al colaborador.'
-          : 'Tu navegador no permite compartir archivos directamente. Descarga la imagen y adjúntala en WhatsApp, o usa el enlace.') + '</p>' +
+          ? 'La imagen está lista. <strong>Descargar imagen y abrir chat</strong> guarda la imagen y abre directamente el chat del colaborador; solo adjúntala desde tu galería. <strong>Compartir imagen</strong> envía el archivo directo, pero WhatsApp no permite preseleccionar el contacto: tendrás que elegirlo en la lista.'
+          : 'Tu navegador no permite compartir archivos. <strong>Descargar imagen y abrir chat</strong> guarda la imagen y abre directamente el chat del colaborador; luego adjúntala desde tu galería.') + '</p>' +
         '<img class="share-preview" src="' + urlImagen + '" alt="Orden de entrega ' + esc(p.id) + '">' +
         '<div class="share-acciones">' +
-          (puede ? '<button type="button" class="btn btn-primario btn-ancho" data-share-imagen>Compartir imagen</button>' : '') +
-          '<button type="button" class="btn ' + (puede ? 'btn-fantasma' : 'btn-primario') + ' btn-ancho" data-share-descargar>Descargar imagen</button>' +
-          '<button type="button" class="btn btn-fantasma btn-ancho" data-share-enlace>Abrir WhatsApp con enlace</button>' +
+          '<button type="button" class="btn btn-primario btn-ancho" data-share-descargar>Descargar imagen y abrir chat</button>' +
+          (puede ? '<button type="button" class="btn btn-fantasma btn-ancho" data-share-imagen>Compartir imagen (elige el contacto)</button>' : '') +
+          '<button type="button" class="btn btn-fantasma btn-ancho" data-share-enlace>Abrir chat con enlace (sin adjuntar)</button>' +
           '<button type="button" class="btn btn-texto btn-ancho" data-cerrar-modal>Cerrar</button>' +
         '</div>' +
       '</div>';
@@ -5282,7 +5282,7 @@ body.bloqueado { overflow: hidden; }
     var s = state.deliveryShare;
     if (!s || !s.file) { toast('La imagen no está lista.', 'error'); return; }
     if (!soportaCompartirArchivos()) {
-      toast('Este navegador no permite compartir imágenes. Descárgala o usa el enlace.', 'error');
+      toast('Este navegador no permite compartir imágenes. Usa «Descargar imagen y abrir chat».', 'error');
       return;
     }
     navigator.share({ files: [s.file], text: s.texto, title: 'Pedido ' + s.pedidoId })
@@ -5294,7 +5294,7 @@ body.bloqueado { overflow: hidden; }
           .then(function () { cerrarModal(); })
           .catch(function (e2) {
             if (e2 && e2.name === 'AbortError') return;
-            toast('No se pudo compartir la imagen. Descárgala o usa el enlace.', 'error');
+            toast('No se pudo compartir la imagen. Usa «Descargar imagen y abrir chat».', 'error');
           });
       });
   }
@@ -5308,6 +5308,16 @@ body.bloqueado { overflow: hidden; }
     document.body.appendChild(a);
     a.click();
     a.remove();
+    if (s.enlaceChat) {
+      // Abre el chat exacto dentro del mismo gesto del usuario.
+      window.open(s.enlaceChat, '_blank', 'noopener');
+      // Mantiene vivo el blob unos segundos para que la descarga termine.
+      setTimeout(function () {
+        if (state.deliveryShare === s) cerrarModal();
+      }, 1800);
+    } else {
+      toast('Imagen descargada. Adjúntala en el chat del delivery.', 'ok');
+    }
   }
 
   function abrirEnlaceDelivery() {
@@ -5328,7 +5338,13 @@ body.bloqueado { overflow: hidden; }
       var file = new File([blob], 'pedido-' + p.id + '.jpg', { type: 'image/jpeg' });
       var url = URL.createObjectURL(blob);
       var texto = mensajeDelivery(p, monto, false);
-      abrirModalCompartirDelivery(p, file, url, texto, enlace);
+      var telefonoChat = '';
+      var coincide = String(enlace).match(/wa\.me\/(\d+)/);
+      if (coincide) telefonoChat = coincide[1];
+      var enlaceChat = telefonoChat
+        ? 'https://wa.me/' + telefonoChat + '?text=' + encodeURIComponent(texto)
+        : enlace;
+      abrirModalCompartirDelivery(p, file, url, texto, enlace, enlaceChat);
     });
   }
 
