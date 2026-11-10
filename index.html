@@ -2805,6 +2805,48 @@ body.bloqueado { overflow: hidden; }
 .hero-nombre { display: block; margin-top: 7px; font-size: calc(10px * var(--escala-texto, 1)); font-weight: 700; letter-spacing: .04em; }
 .hero-nombre small { display: block; font-weight: 400; color: var(--muted); font-size: calc(8.5px * var(--escala-texto, 1)); margin-top: 2px; letter-spacing: 0; line-height: 1.3; }
 
+/* Fotos del Hero (subida desde Apariencia) */
+.hero-fotos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.hero-foto-slot {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.hero-foto-preview {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--media-bg-2);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+}
+.hero-foto-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero-foto-vacio {
+  font-size: calc(8px * var(--escala-texto, 1));
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hero-foto-slot-info strong { display: block; font-size: calc(10px * var(--escala-texto, 1)); letter-spacing: .03em; }
+.hero-foto-slot-info small { display: block; margin-top: 2px; font-size: calc(8.5px * var(--escala-texto, 1)); line-height: 1.35; color: var(--muted); }
+.hero-foto-slot-acciones { display: flex; flex-wrap: wrap; gap: 6px; }
+.hero-foto-slot-acciones .btn-mini { flex: 1 1 auto; }
+.hero-foto-estado {
+  min-height: 1.2em;
+  margin: 0;
+  font-size: calc(8px * var(--escala-texto, 1));
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .fuentes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; }
 .fuente-card {
   border: 1px solid var(--line);
@@ -3303,7 +3345,10 @@ body.bloqueado { overflow: hidden; }
     fuente_textos: 'inter',
     escala_fuentes: 100,
     color_acento: '',
-    hero_diseno: 'clasico'
+    hero_diseno: 'clasico',
+    hero_foto_1: '',
+    hero_foto_2: '',
+    hero_foto_3: ''
   };
 
   function normalizarApariencia(cfg) {
@@ -3326,7 +3371,10 @@ body.bloqueado { overflow: hidden; }
       fuente_textos: fx,
       escala_fuentes: escala,
       color_acento: acento,
-      hero_diseno: hero
+      hero_diseno: hero,
+      hero_foto_1: String(cfg.hero_foto_1 || '').trim(),
+      hero_foto_2: String(cfg.hero_foto_2 || '').trim(),
+      hero_foto_3: String(cfg.hero_foto_3 || '').trim()
     };
   }
 
@@ -3629,7 +3677,10 @@ body.bloqueado { overflow: hidden; }
     fuente_textos: 'inter',
     escala_fuentes: '100',
     color_acento: '',
-    hero_diseno: 'clasico'
+    hero_diseno: 'clasico',
+    hero_foto_1: '',
+    hero_foto_2: '',
+    hero_foto_3: ''
   };
 
   function demoSeed() {
@@ -3710,7 +3761,10 @@ body.bloqueado { overflow: hidden; }
       fuente_textos: cfg.fuente_textos || 'inter',
       escala_fuentes: cfg.escala_fuentes || '100',
       color_acento: cfg.color_acento || '',
-      hero_diseno: cfg.hero_diseno || 'clasico'
+      hero_diseno: cfg.hero_diseno || 'clasico',
+      hero_foto_1: cfg.hero_foto_1 || '',
+      hero_foto_2: cfg.hero_foto_2 || '',
+      hero_foto_3: cfg.hero_foto_3 || ''
     };
   }
 
@@ -4311,14 +4365,27 @@ body.bloqueado { overflow: hidden; }
       '</article>';
   }
 
+  /* Devuelve las 3 fotos del Hero: primero las subidas en Apariencia,
+     y si falta alguna se completa con fotos de productos. */
+  function fotosHero(cfg) {
+    cfg = cfg || state.config || {};
+    var fotos = [
+      String(cfg.hero_foto_1 || '').trim() || String(cfg.hero_imagen || '').trim(),
+      String(cfg.hero_foto_2 || '').trim(),
+      String(cfg.hero_foto_3 || '').trim()
+    ];
+    (state.productos || []).forEach(function (p) {
+      if (!p.imagen || fotos.indexOf(p.imagen) >= 0) return;
+      var hueco = fotos.indexOf('');
+      if (hueco >= 0) fotos[hueco] = p.imagen;
+    });
+    return fotos;
+  }
+
   function pintarHero() {
     var cont = el('hero-visual');
     if (!cont) return;
-    var conFoto = state.productos.filter(function (p) { return p.imagen; });
-    var hero = String(state.config.hero_imagen || '').trim();
-    var fotos = [];
-    if (hero) fotos.push(hero);
-    conFoto.forEach(function (p) { if (fotos.length < 3 && fotos.indexOf(p.imagen) < 0) fotos.push(p.imagen); });
+    var fotos = fotosHero(state.config);
     var clases = ['foto-1', 'foto-2', 'foto-3'];
     var html = '';
     for (var i = 0; i < 3; i++) {
@@ -4688,8 +4755,42 @@ body.bloqueado { overflow: hidden; }
     });
   }
 
+  /* Reduce la imagen sin recortarla (para el Hero, que usa varios formatos). */
+  function redimensionarImagenAdmin(file, maxAncho) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var w = img.naturalWidth || img.width;
+            var h = img.naturalHeight || img.height;
+            if (!w || !h) return rej(new Error('La imagen está dañada.'));
+            var outW = Math.min(maxAncho || 1100, w);
+            var outH = Math.max(1, Math.round(h * outW / w));
+            var cv = document.createElement('canvas');
+            cv.width = outW;
+            cv.height = outH;
+            var ctx = cv.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, outW, outH);
+            res(cv.toDataURL('image/jpeg', 0.86));
+          } catch (e) {
+            rej(new Error('No se pudo procesar la imagen.'));
+          }
+        };
+        img.onerror = function () { rej(new Error('Formato de imagen no compatible.')); };
+        img.src = fr.result;
+      };
+      fr.onerror = function () { rej(new Error('No se pudo leer el archivo.')); };
+      fr.readAsDataURL(file);
+    });
+  }
+
   function subirImagenAdmin(file, nombre, ratio, ancho) {
-    return recortarImagenAdmin(file, ratio, ancho).then(function (dataUrl) {
+    var preparar = ratio ? recortarImagenAdmin(file, ratio, ancho) : redimensionarImagenAdmin(file, ancho);
+    return preparar.then(function (dataUrl) {
       if (DEMO) return dataUrl;
       var id = 'up' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       var cuerpo = JSON.stringify({
@@ -7017,7 +7118,7 @@ body.bloqueado { overflow: hidden; }
         '<div class="campo"><label for="cf-whatsapp">WhatsApp (con código de país)</label><input id="cf-whatsapp" inputmode="tel" value="' + esc(valorCfg(cfg, 'whatsapp')) + '" placeholder="584121234567"></div>' +
         '<div class="campo"><label for="cf-instagram">Instagram (sin @)</label><input id="cf-instagram" value="' + esc(valorCfg(cfg, 'instagram')) + '" placeholder="frugulletty"></div>' +
         '<div class="campo ancho"><label for="cf-email">Correo para avisos de pedidos</label><input id="cf-email" type="email" value="' + esc(valorCfg(cfg, 'email_avisos')) + '" placeholder="tucorreo@gmail.com"></div>' +
-        '<div class="campo ancho"><label for="cf-hero">Foto de portada (URL opcional)</label><input id="cf-hero" value="' + esc(valorCfg(cfg, 'hero_imagen')) + '" placeholder="https://..."></div>' +
+        '<div class="campo ancho"><label for="cf-hero">Foto de portada por enlace (opcional)</label><input id="cf-hero" value="' + esc(valorCfg(cfg, 'hero_imagen')) + '" placeholder="https://..."><p class="admin-ayuda" style="margin-top:6px">Para subir fotos desde tu computadora o teléfono usa <strong>Apariencia → Fotos del Hero</strong>.</p></div>' +
         '<div class="campo ancho"><label>Logo de la tienda</label>' +
           '<div class="logo-admin">' +
             '<span class="marca-simbolo' + (String(valorCfg(cfg, 'logo_url')).trim() ? ' con-logo' : '') + '" id="cfg-logo-preview">' +
@@ -7244,18 +7345,12 @@ body.bloqueado { overflow: hidden; }
       ' aria-label="' + esc(nombre) + '" title="' + esc(nombre) + '"></button>';
   }
 
-  function previewHeroFotos() {
-    var fotos = [];
-    var hero = String((state.config || {}).hero_imagen || '').trim();
-    if (hero) fotos.push(hero);
-    (state.productos || []).forEach(function (p) {
-      if (p.imagen && fotos.length < 3 && fotos.indexOf(p.imagen) < 0) fotos.push(p.imagen);
-    });
-    return fotos;
+  function previewHeroFotos(a) {
+    return fotosHero(a || state.config || {});
   }
 
   function previewAparienciaHtml(a) {
-    var fotos = previewHeroFotos();
+    var fotos = previewHeroFotos(a);
     function foto(i, clase) {
       return '<span class="ap-hero-foto ' + clase + '">' +
         (fotos[i] ? '<img src="' + esc(fotos[i]) + '" alt="" onerror="this.remove()">' : '') +
@@ -7305,6 +7400,33 @@ body.bloqueado { overflow: hidden; }
     '</button>';
   }
 
+  var HERO_FOTO_SLOTS = [
+    { n: 1, nombre: 'Foto principal', ayuda: 'La imagen grande de la portada.' },
+    { n: 2, nombre: 'Foto superior', ayuda: 'La pequeña que va arriba.' },
+    { n: 3, nombre: 'Foto inferior', ayuda: 'La que flota abajo.' }
+  ];
+
+  function heroFotoSlotHtml(n, url, nombre, ayuda) {
+    var tiene = !!String(url || '').trim();
+    return '<div class="hero-foto-slot" data-hero-foto="' + n + '">' +
+      '<div class="hero-foto-preview">' +
+        (tiene ? '<img src="' + esc(url) + '" alt="">' : '<span class="hero-foto-vacio">Sin foto</span>') +
+      '</div>' +
+      '<div class="hero-foto-slot-info">' +
+        '<strong>' + esc(nombre) + '</strong>' +
+        '<small>' + esc(ayuda) + '</small>' +
+      '</div>' +
+      '<div class="hero-foto-slot-acciones">' +
+        '<button class="btn-mini" type="button" data-hero-subir="' + n + '">Subir foto</button>' +
+        '<button class="btn-mini" type="button" data-hero-camara="' + n + '" title="Tomar foto con la cámara">Cámara</button>' +
+        '<button class="btn-mini" type="button" data-hero-quitar="' + n + '"' + (tiene ? '' : ' disabled') + '>Quitar</button>' +
+      '</div>' +
+      '<p class="hero-foto-estado"></p>' +
+      '<input type="file" id="ap-hero-file-' + n + '" accept="image/*" hidden>' +
+      '<input type="file" id="ap-hero-camara-' + n + '" accept="image/*" capture="environment" hidden>' +
+    '</div>';
+  }
+
   function adminAparienciaHtml(cfg) {
     var a = normalizarApariencia(cfg);
 
@@ -7327,8 +7449,12 @@ body.bloqueado { overflow: hidden; }
       return heroCardHtml(id, a.hero_diseno);
     }).join('');
 
+    var heroFotosHtml = HERO_FOTO_SLOTS.map(function (s) {
+      return heroFotoSlotHtml(s.n, a['hero_foto_' + s.n], s.nombre, s.ayuda);
+    }).join('');
+
     var html = adminCabecera('Apariencia', 'Diseño de la tienda',
-      'Cambia plantilla, tipografía y tamaño del texto. Solo se modifica lo visual: pedidos, pagos, stock y deliverys siguen funcionando igual.',
+      'Cambia plantilla, tipografía, tamaño del texto, fotos del Hero y el diseño de la portada. Solo se modifica lo visual: pedidos, pagos, stock y deliverys siguen funcionando igual.',
       '<button class="btn btn-fantasma" type="button" data-avista="tienda">Ver tienda</button>');
 
     html += '<div class="apariencia-layout">' +
@@ -7343,6 +7469,12 @@ body.bloqueado { overflow: hidden; }
           '<h3>Rediseño del Hero</h3>' +
           '<p class="admin-ayuda" style="margin:0 0 12px">Elige cómo se acomodan las 3 fotos de la portada. Solo cambia el diseño visual: textos, botones, precios y pedidos siguen funcionando igual.</p>' +
           '<div class="hero-grid">' + heroesHtml + '</div>' +
+        '</div>' +
+
+        '<div class="admin-bloque">' +
+          '<h3>Fotos del Hero</h3>' +
+          '<p class="admin-ayuda" style="margin:0 0 12px">Sube las 3 fotos de la portada desde tu computadora o teléfono. Se ajustan solas y conservan su proporción. Si dejas una vacía, se usa una foto de tus productos.</p>' +
+          '<div class="hero-fotos-grid">' + heroFotosHtml + '</div>' +
         '</div>' +
 
         '<div class="admin-bloque">' +
@@ -7397,7 +7529,10 @@ body.bloqueado { overflow: hidden; }
       fuente_textos: sel.fuente_textos,
       escala_fuentes: String(sel.escala_fuentes),
       color_acento: sel.color_acento,
-      hero_diseno: sel.hero_diseno
+      hero_diseno: sel.hero_diseno,
+      hero_foto_1: sel.hero_foto_1 || '',
+      hero_foto_2: sel.hero_foto_2 || '',
+      hero_foto_3: sel.hero_foto_3 || ''
     };
 
     llamar('adminGuardarConfig', [state.admin.token, datos])
@@ -7407,6 +7542,7 @@ body.bloqueado { overflow: hidden; }
         state.config = state.config || {};
         Object.keys(datos).forEach(function (k) { state.config[k] = datos[k]; });
         aplicarApariencia(state.config);
+        pintarHero();
         toast('Apariencia guardada', 'ok');
         if (btn) { btn.disabled = false; btn.textContent = 'Guardar apariencia'; }
       })
@@ -7461,7 +7597,17 @@ body.bloqueado { overflow: hidden; }
         }
       }
       var prevHero = el('ap-hero-preview');
-      if (prevHero) prevHero.setAttribute('data-hero', sel.hero_diseno);
+      if (prevHero) {
+        prevHero.setAttribute('data-hero', sel.hero_diseno);
+        var fotosPrev = previewHeroFotos(sel);
+        [1, 2, 3].forEach(function (n) {
+          var caja = prevHero.querySelector('.ap-hf-' + n);
+          if (!caja) return;
+          var url = fotosPrev[n - 1] || '';
+          caja.innerHTML = url ? '<img src="' + esc(url) + '" alt="" onerror="this.remove()">' : '';
+        });
+      }
+      pintarSlots();
 
       var res = el('ap-resumen');
       if (res) {
@@ -7471,6 +7617,39 @@ body.bloqueado { overflow: hidden; }
           FUENTES.textos[sel.fuente_textos].nombre + ' · ' +
           sel.escala_fuentes + '%' + acNombre + ' · Hero ' + HEROES[sel.hero_diseno].nombre;
       }
+    }
+
+    function pintarSlots() {
+      HERO_FOTO_SLOTS.forEach(function (s) {
+        var slot = form.querySelector('[data-hero-foto="' + s.n + '"]');
+        if (!slot) return;
+        var url = String(sel['hero_foto_' + s.n] || '').trim();
+        var caja = slot.querySelector('.hero-foto-preview');
+        if (caja) caja.innerHTML = url ? '<img src="' + esc(url) + '" alt="">' : '<span class="hero-foto-vacio">Sin foto</span>';
+        var quitar = slot.querySelector('[data-hero-quitar]');
+        if (quitar) quitar.disabled = !url;
+      });
+    }
+
+    function subirFotoHero(n, file) {
+      var slot = form.querySelector('[data-hero-foto="' + n + '"]');
+      var estado = slot ? slot.querySelector('.hero-foto-estado') : null;
+      var botones = slot ? todos('button', slot) : [];
+      if (estado) estado.textContent = 'Subiendo foto…';
+      botones.forEach(function (b) { b.disabled = true; });
+      subirImagenAdmin(file, 'hero-' + n, 0, 1100)
+        .then(function (url) {
+          sel['hero_foto_' + n] = url;
+          refrescar();
+          if (estado) estado.textContent = 'Foto lista. Pulsa Guardar apariencia.';
+        })
+        .catch(function (e) {
+          if (estado) estado.textContent = 'No se pudo subir: ' + e.message;
+        })
+        .then(function () {
+          botones.forEach(function (b) { b.disabled = false; });
+          pintarSlots();
+        });
     }
 
     form.addEventListener('click', function (ev) {
@@ -7492,6 +7671,39 @@ body.bloqueado { overflow: hidden; }
 
       var hero = ev.target.closest('[data-hero-opcion]');
       if (hero) { sel.hero_diseno = hero.getAttribute('data-hero-opcion'); refrescar(); return; }
+
+      var subir = ev.target.closest('[data-hero-subir]');
+      if (subir) {
+        var inp = el('ap-hero-file-' + subir.getAttribute('data-hero-subir'));
+        if (inp) inp.click();
+        return;
+      }
+
+      var camara = ev.target.closest('[data-hero-camara]');
+      if (camara) {
+        var cam = el('ap-hero-camara-' + camara.getAttribute('data-hero-camara'));
+        if (cam) cam.click();
+        return;
+      }
+
+      var quitar = ev.target.closest('[data-hero-quitar]');
+      if (quitar) {
+        sel['hero_foto_' + quitar.getAttribute('data-hero-quitar')] = '';
+        refrescar();
+        return;
+      }
+    });
+
+    HERO_FOTO_SLOTS.forEach(function (s) {
+      ['ap-hero-file-', 'ap-hero-camara-'].forEach(function (pref) {
+        var inp = el(pref + s.n);
+        if (!inp) return;
+        inp.addEventListener('change', function (ev) {
+          var f = ev.target.files && ev.target.files[0];
+          ev.target.value = '';
+          if (f) subirFotoHero(s.n, f);
+        });
+      });
     });
 
     var rango = el('ap-escala');
